@@ -41,9 +41,11 @@ else:
     known_encodings = []
 
 # --- Step 2: Attendance Marking Function with Database ---
+# --- Step 2: Attendance Marking Function with Database & Excel ---
 def mark_attendance(name):
     conn = sqlite3.connect('attendance.db')
     cursor = conn.cursor()
+    # Ensure the table exists
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS attendance (
             name TEXT NOT NULL,
@@ -51,20 +53,43 @@ def mark_attendance(name):
             PRIMARY KEY (name)
         );
     ''')
+    
     now = datetime.now()
     dt_string = now.strftime('%Y-%m-%d %H:%M:%S')
+    
     try:
+        # Check if the name already exists in the database
         cursor.execute("SELECT * FROM attendance WHERE name = ?;", (name,))
         existing_record = cursor.fetchone()
+        
+        # ONLY if the person is NOT in the database, we save them
         if existing_record is None:
+            # 1. Save to SQLite Database
             cursor.execute("INSERT INTO attendance (name, timestamp) VALUES (?, ?);", (name, dt_string))
             conn.commit()
-            print(f"Attendance recorded for: {name}")
+            
+            # 2. Save to Excel
+            file_path = 'Attendance.xlsx'
+            new_entry = pd.DataFrame({'Name': [name], 'Timestamp': [dt_string]})
+            
+            if os.path.exists(file_path):
+                # If file exists, load it, append new data, and save
+                try:
+                    df_existing = pd.read_excel(file_path)
+                    df_updated = pd.concat([df_existing, new_entry], ignore_index=True)
+                    df_updated.to_excel(file_path, index=False)
+                except Exception as e:
+                    print(f"Error updating Excel: {e}")
+            else:
+                # If file doesn't exist, create it
+                new_entry.to_excel(file_path, index=False)
+                
+            print(f"Attendance recorded for: {name} (Saved to DB and Excel)")
+            
     except sqlite3.IntegrityError:
         pass
     finally:
         conn.close()
-
 # --- New Function: Generate Attendance Report ---
 def generate_attendance_report():
     try:
